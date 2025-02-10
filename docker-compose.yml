@@ -1,0 +1,9 @@
+
+services:
+  selenium:
+    image: selenium/standalone-chrome:3.141.59-20210607
+    container_name: selenium_chrome
+    ports:
+      - "4444:4444"
+    shm_size: "2g"
+    restart: unless-stopped
