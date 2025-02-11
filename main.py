@@ -8,6 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
@@ -39,6 +40,7 @@ driver = webdriver.Remote(
     command_executor="http://localhost:4444/wd/hub",
     options=options  
 )
+
 
 def first_site():
     try:
@@ -198,6 +200,7 @@ def seven_site():
     finally:
         pass
 
+
 def eight_site():
     try:
         pass
@@ -207,11 +210,24 @@ def eight_site():
 
 def nine_site():
     try:
-        url = f'https://minjust.gov.ru/uploaded/files/reestr-inostrannyih-agentov-070225.pdf'
+        url = 'https://minjust.gov.ru/ru/activity/directions/998/'
+        response = requests.get(url, headers=headers, verify=False)
 
-        response = requests.get(url, headers=headers)
-        with open(f'{url}', 'w') as file:
-            file.write(response)
+        soup = BeautifulSoup(response.text, 'lxml')
+        pdf_src = soup.find(class_='page-block-text').find_all('a')[1]['href']
+        pdf_url = 'https://minjust.gov.ru' + pdf_src
+        print(pdf_url)
+
+        pdf_file = requests.get(pdf_url, headers=headers, verify=False)
+        with open(f'1.pdf', 'wb') as file:
+            file.write(pdf_file.content)
+    finally:
+        pass
+
+
+def ten_site():
+    try:
+        pass
     finally:
         pass
 
@@ -226,6 +242,7 @@ def main():
     # seven_site()
     # eight_site()
     nine_site()
+    # ten_site()
 
 if __name__ == '__main__':
     main()
