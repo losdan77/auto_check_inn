@@ -1,6 +1,7 @@
 import random
 import requests
 import time
+import pdfplumber
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -201,31 +202,49 @@ def seven_site():
         pass
 
 
-def eight_site():
+def eight_site(): # Надо спросить
     try:
         pass
     finally:
         pass
 
 
-def nine_site():
+def nine_site(): # Впринципе готово
+    ''''''
     try:
+        inn = "253607312162"
         url = 'https://minjust.gov.ru/ru/activity/directions/998/'
         response = requests.get(url, headers=headers, verify=False)
 
         soup = BeautifulSoup(response.text, 'lxml')
         pdf_src = soup.find(class_='page-block-text').find_all('a')[1]['href']
         pdf_url = 'https://minjust.gov.ru' + pdf_src
-        print(pdf_url)
+        
+        with open(f'ckeck_pdf_url.txt', 'r') as file:
+            last_pdf_url = file.readline()
 
-        pdf_file = requests.get(pdf_url, headers=headers, verify=False)
-        with open(f'1.pdf', 'wb') as file:
-            file.write(pdf_file.content)
+        if last_pdf_url != pdf_url:
+            print('качаем')
+            pdf_file = requests.get(pdf_url, headers=headers, verify=False)
+            with open(f'reestr.pdf', 'wb') as file:
+                file.write(pdf_file.content)
+
+            with open(f'ckeck_pdf_url.txt', 'w') as file:
+                file.write(pdf_url)
+
+        
+        with pdfplumber.open('reestr.pdf') as pdf:
+            for page in pdf.pages:
+                if inn in page.extract_text():
+                    print(f'{inn} присутсвует в реестре на {page.page_number} странице')
+        
+
+
     finally:
         pass
 
 
-def ten_site():
+def ten_site(): # Надо спросить
     try:
         pass
     finally:
