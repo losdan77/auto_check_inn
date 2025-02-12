@@ -1,7 +1,9 @@
+import re
 import random
 import requests
 import time
 import pdfplumber
+from fastapi import FastAPI
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -9,6 +11,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
+app = FastAPI()
+
+@app.get('/main')
+async def main(inn: str):
+    first = first_site(inn = inn)
+    return first
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -34,8 +42,16 @@ headers = {
     'User-Agent': random.choice(USER_AGENTS)
 }
 
+download_dir = "." 
+
 options = webdriver.ChromeOptions()
 options.add_argument(f"user-agent={random_user_agent}")
+options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,  # Куда сохранять
+    "download.prompt_for_download": False,  # Не показывать окно подтверждения
+    "download.directory_upgrade": True,
+    "safebrowsing.enabled": True
+})
 
 driver = webdriver.Remote(
     command_executor="http://localhost:4444/wd/hub",
@@ -43,37 +59,66 @@ driver = webdriver.Remote(
 )
 
 
-def first_site():
+def first_site(inn: int):
     try:
         print('-----first_site start')
-        driver.get("https://egrul.nalog.ru/index.html")
+        # driver.get("https://egrul.nalog.ru/index.html")
         
-        input_inn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//input[@id='query']"))
-        )
-        print(input_inn.get_attribute('outerHTML'))
+        # input_inn = WebDriverWait(driver, 10).until(
+        #     EC.element_to_be_clickable((By.XPATH, "//input[@id='query']"))
+        # )
+        # print(input_inn.get_attribute('outerHTML'))
         
-        input_inn.click()
-        time.sleep(1)
+        # input_inn.click()
+        # time.sleep(1)
 
-        input_inn.send_keys("5054004240")
-        input_inn.send_keys(Keys.RETURN)
+        # input_inn.send_keys(inn)
+        # input_inn.send_keys(Keys.RETURN)
+        # time.sleep(15)
+        # result_title = WebDriverWait(driver, 20).until(
+        #     EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'res-caption')]"))
+        # ) 
+        # result_info = WebDriverWait(driver, 20).until(
+        #     EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'res-text')]"))
+        # )
+        # button_for_download_pdf = WebDriverWait(driver, 20).until(
+        #     EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'btn-with-icon btn-excerpt op-excerpt')]"))
+        # )
         
-        result_title = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'res-caption')]"))
-        )
-        # result = driver.find_element(By.XPATH, "//div[contains(@class, 'res-caption')]")   
-        result_info = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'res-text')]"))
-        )
-        print(result_title.text)
-        print(result_info.text)
-        time.sleep(3)
+        # button_for_download_pdf.click()
+        # print(result_title.text)
+        # print(result_info.text)
+        # time.sleep(20)
+        # print("Заголовок страницы:", driver.title)
+        with pdfplumber.open("ul-1025002033110-20250212154136.pdf") as pdf:
+            text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
+        
+        firm_name_pattern = r"Полное наименование на русском языке\|([^|]+)\|"
+        firm_name_match = re.search(firm_name_pattern, text)
 
-        print("Заголовок страницы:", driver.title)
+        # Регулярка для ФИО (Фамилия Имя Отчество)
+        # fio_pattern = re.search(r"Фамилия\s+Имя\s+Отчество\s+([\wЁёА-Яа-я-]+)\s+([\wЁёА-Яа-я-]+)\s+([\wЁёА-Яа-я-]+)", text)
+        lastname_pattern = re.search(r"Фамилия\s+([\wЁёА-Яа-я-])", text)
+        name_pattern = re.search(r"Имя\s+([\wЁёА-Яа-я-]+)", text)
+        fathername_pattern = re.search(r"Отчество\s+([\wЁёА-Яа-я-]+)", text)
+        
+        # Регулярка для ИНН (обычно 12 цифр)
+        inn_pattern = re.search(r"ИНН\s+(\d{12})", text)
+
+        lastname = lastname_pattern.group(1) if lastname_pattern else "Не найдено"
+        name = name_pattern.group(1) if name_pattern else "Не найдено"
+        fathername = fathername_pattern.group(1) if fathername_pattern else "Не найдено"
+        
+        firm_name = firm_name_match.group(1).strip() if firm_name_match else 'Не найдено'
+        
+        fio = f'{lastname} {name} {fathername}'
+        inn = inn_pattern.group(1) if inn_pattern else "Не найдено"
+
+        return firm_name, fio, inn
         print('-----first_site end')
     finally:
-        driver.quit()
+        # driver.quit()
+        pass
 
 
 def second_site():
@@ -251,17 +296,3 @@ def ten_site(): # Надо спросить
         pass
 
 
-def main():
-    # first_site()
-    # second_site()
-    # third_site()
-    # fourth_site()
-    # five_site()
-    # six_site()
-    # seven_site()
-    # eight_site()
-    nine_site()
-    # ten_site()
-
-if __name__ == '__main__':
-    main()
