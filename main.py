@@ -15,8 +15,65 @@ app = FastAPI()
 
 @app.get('/main')
 async def main(inn: str):
-    first = first_site(inn = inn)
-    return first
+    inn_firm = inn
+
+    # 1 -------- файл качается в докер, надо шарить папку и раскоментить парс пдфа с сайта
+    first_site_info = first_site(inn = inn)
+
+      
+    array_inn = [inn_firm]
+    array_fio = []
+    for info in first_site_info[1]:
+        array_inn.append(info['inn'])
+        array_fio.append(f'{info['surname']} {info['name']} {info['patronymic']}')
+
+    
+    # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
+    # second_site_info = []
+    # for inn in array_inn:
+    #     info_dict = {f'{inn}': second_site(inn)}
+    #     second_site_info.append(info_dict)
+
+
+    # 3 --------
+    # third_site_info = third_site(inn_firm) <- Необходимо переписать на селениум
+
+    
+    # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
+    # fourth_site_info = []
+    # for inn in array_inn:
+    #     info_dict = {f'{inn}': fourth_site(inn)}
+    #     fourth_site_info.append(info_dict)
+
+
+    # 5 --------
+    five_site_info = []
+    for inn in array_inn:
+        info_dict = {f'{inn}': five_site(inn)}
+        five_site_info.append(info_dict)
+
+
+    # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
+    # seven_site_info = []
+    # for inn in array_inn:
+    #     info_dict = {f'{inn}': seven_site(inn)}
+    #     seven_site_info.append(info_dict)
+
+
+    # 9 -------- файл и данные есть (файл в докере)
+    # nine_site_info = []
+    # for inn in array_inn:
+    #     info_dict = {f'{inn}': nine_site(inn)}
+    #     nine_site_info.append(info_dict)
+    
+
+    # 10 -------- скрины и данные есть
+    # ten_site_info = []
+    # for fio in array_fio:
+    #     info_dict = {f'{fio}': ten_site(fio=fio)}
+    #     ten_site_info.append(info_dict)
+
+    return five_site_info
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -59,8 +116,12 @@ driver = webdriver.Remote(
 )
 
 
-def first_site(inn: int):
+def first_site(inn: str):
     try:
+        driver = webdriver.Remote(
+            command_executor="http://localhost:4444/wd/hub",
+            options=options  
+        )
         print('-----first_site start')
         # driver.get("https://egrul.nalog.ru/index.html")
         
@@ -93,60 +154,80 @@ def first_site(inn: int):
         with pdfplumber.open("ul-1025002033110-20250212154136.pdf") as pdf:
             text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         
-        firm_name_pattern = r"Полное наименование на русском языке\|([^|]+)\|"
-        firm_name_match = re.search(firm_name_pattern, text)
+        firm_name_pattern = r"1 Полное наименование на русском языке(.*?)2"
+        firm_name_match = re.search(firm_name_pattern, text, re.DOTALL)
 
-        # Регулярка для ФИО (Фамилия Имя Отчество)
-        # fio_pattern = re.search(r"Фамилия\s+Имя\s+Отчество\s+([\wЁёА-Яа-я-]+)\s+([\wЁёА-Яа-я-]+)\s+([\wЁёА-Яа-я-]+)", text)
-        lastname_pattern = re.search(r"Фамилия\s+([\wЁёА-Яа-я-])", text)
-        name_pattern = re.search(r"Имя\s+([\wЁёА-Яа-я-]+)", text)
-        fathername_pattern = re.search(r"Отчество\s+([\wЁёА-Яа-я-]+)", text)
         
-        # Регулярка для ИНН (обычно 12 цифр)
-        inn_pattern = re.search(r"ИНН\s+(\d{12})", text)
+        
+        
+        
+        firm_name = firm_name_match.group(1).strip().replace("\n", " ").replace("\"", "'") if firm_name_match else "Не найдено"
+        
+        
 
-        lastname = lastname_pattern.group(1) if lastname_pattern else "Не найдено"
-        name = name_pattern.group(1) if name_pattern else "Не найдено"
-        fathername = fathername_pattern.group(1) if fathername_pattern else "Не найдено"
-        
-        firm_name = firm_name_match.group(1).strip() if firm_name_match else 'Не найдено'
-        
-        fio = f'{lastname} {name} {fathername}'
-        inn = inn_pattern.group(1) if inn_pattern else "Не найдено"
+        # Регулярное выражение для поиска информации о каждом участнике
+        all_partition_pattern = r"\d+\s+Фамилия\s+([^\n]+)\s+Имя\s+([^\n]+)\s+Отчество\s+([^\n]+)\s+\d+\s+ИНН\s+(\d+)"
 
-        return firm_name, fio, inn
+        # Поиск всех совпадений
+        all_partition_matches = re.findall(all_partition_pattern, text)
+        
+        all_partition_result = []
+        # Вывод результатов
+        for match in all_partition_matches:
+            surname, name, patronymic, inn = match
+            result_dict = {
+                'surname': surname,
+                'name': name,
+                'patronymic': patronymic,
+                'inn': inn,
+            }
+            all_partition_result.append(result_dict)
+            
+
         print('-----first_site end')
+        return firm_name, all_partition_result
+        
     finally:
         # driver.quit()
         pass
 
 
-def second_site():
+def second_site(inn: str):
     try:
         print('-----second_site start')
-        inn = "5054004240"
+        print(inn)
         bad_inn = '723011055739'
         url = f"https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString={inn}&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=on"
-        # https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString=723011055739&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=on
+        
         response = requests.get(url, headers=headers)
 
         soup = BeautifulSoup(response.text, "lxml")
         result_info = soup.find(class_='search-registry-entrys-block') # search-registry-entrys-block
         no_result_info = soup.find(class_='paginator-block')
-        print(result_info)
-        print(no_result_info)
-        
+        print(1, len(result_info.text))
+        print(2, len(no_result_info.text))
+        ##############################
+        driver = webdriver.Remote(
+            command_executor="http://localhost:4444/wd/hub",
+            options=options
+        )
+        driver.get(f"https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString={inn}&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=one")
+        time.sleep(5)
+        driver.save_screenshot(f'./screenshot/second_site/{inn}.png')
+        #############################
         print('-----second_site end')
-
+        if len(result_info.text) > 10:
+            return 'yes'
+        return 'no'
+        
     finally:
-        # driver.quit()
         pass
 
 
-def third_site():
+def third_site(inn: str):
     try:
         print('-----third_site start')
-        inn = "5054004240"
+        
         bad_inn = '723011055739'
         url = f"https://pb.nalog.ru/search.html#t=1739260392651&mode=search-all&queryAll={inn}&page=1&pageSize=10"
         # https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString=723011055739&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=on
@@ -157,32 +238,47 @@ def third_site():
         print(result_info)
         
         print('-----third_site end')
+        # return result_info
 
     finally:
         # driver.quit()
         pass
 
 
-def fourth_site():
+def fourth_site(inn: str):
     try:
+        driver = webdriver.Remote(
+            command_executor="http://localhost:4444/wd/hub",
+            options=options  
+        )
+
         print('-----fourth_site start')
-        inn = "5054004240"
+        # inn = "5054004240"
         driver.get(f"https://fedresurs.ru/entities?searchString={inn}")
+        time.sleep(5)
         result = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'container full-height')]"))
         )
-        print(result.get_attribute('outerHTML'))
-        
-
+        driver.save_screenshot(f'./screenshot/fourth_site/{inn}.png')
+        # print(result.get_attribute('outerHTML'))
+        print(len(result.get_attribute('outerHTML')))
+        # no-result-msg-header
         print('-----fourth_site end')
+        if len(result.get_attribute('outerHTML')) > 7000:
+            return 'yes'
+        return 'no'
     finally:
         driver.quit()
 
 
-def five_site():
+def five_site(inn: str):
     try:
         print('-----five_site start')
-        inn = "5054004240"
+        # inn = "5054004240"
+        driver = webdriver.Remote(
+            command_executor="http://localhost:4444/wd/hub",
+            options=options  
+        )
         
         driver.get(f"https://kad.arbitr.ru/")
         time.sleep(5)
@@ -197,11 +293,18 @@ def five_site():
         input_inn.send_keys(inn)
         input_inn.send_keys(Keys.RETURN)
         time.sleep(15)
-        result_info = WebDriverWait(driver, 10).until( # не получается увидеть таблицу с результатами очень сложный сайт
-            # EC.element_to_be_clickable((By.XPATH, "//div[@id='table']"))
-            EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'b-results')]"))
+        # result_info = WebDriverWait(driver, 10).until( # не получается увидеть таблицу с результатами очень сложный сайт (нужно подумать нужна ли эта переменная)
+        #     # EC.element_to_be_clickable((By.XPATH, "//div[@id='table']"))
+        #     EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'b-results')]"))
+        # )
+        driver.save_screenshot(f'./screenshot/five_site/{inn}.png')
+        banckrot_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//li[contains(@class, 'bankruptcy')]"))
         )
-        print(result_info.get_attribute('outerHTML'))
+        banckrot_button.click() # !почему то говори, что не кликабле, хотя по факту кликабле
+        time.sleep(2)
+        driver.save_screenshot(f'./screenshot/five_site/{inn}.png')
+        # print(result_info.get_attribute('outerHTML'))
         
 
         print('-----five_site end')
@@ -228,11 +331,11 @@ def six_site():
         pass
 
 
-def seven_site():
+def seven_site(inn: str):
     try:
         print('-----seven_site start')
 
-        inn = "5054004240"
+        # inn = "5054004240"
         url = f'https://zakupki.gov.ru/epz/main/public/document/search.html?searchString={inn}&sectionId=2369&strictEqual=false'
 
         response = requests.get(url, headers=headers)
@@ -240,11 +343,22 @@ def seven_site():
         soup = BeautifulSoup(response.text, "lxml")
         result_info = soup.find_all('section')[0].find(class_='docs-list')
         
-        print(result_info)
-
+        print(len(result_info.text))
+        ##############################
+        driver = webdriver.Remote(
+            command_executor="http://localhost:4444/wd/hub",
+            options=options  
+        )
+        driver.get(f"https://zakupki.gov.ru/epz/main/public/document/search.html?searchString={inn}&sectionId=2369&strictEqual=false")
+        time.sleep(5)
+        driver.save_screenshot(f'./screenshot/seven_site/{inn}.png')
+        #############################
         print('-----seven_site end')
+        if len(result_info.text) > 100:
+            return 'yes'
+        return 'no'
     finally:
-        pass
+        driver.quit()
 
 
 def eight_site(): # Надо спросить
@@ -254,10 +368,10 @@ def eight_site(): # Надо спросить
         pass
 
 
-def nine_site(): # Впринципе готово
+def nine_site(inn: str): # Впринципе готово (проблема по MIMA)
     ''''''
     try:
-        inn = "253607312162"
+        # inn = "253607312162"
         url = 'https://minjust.gov.ru/ru/activity/directions/998/'
         response = requests.get(url, headers=headers, verify=False)
 
@@ -270,29 +384,58 @@ def nine_site(): # Впринципе готово
 
         if last_pdf_url != pdf_url:
             print('качаем')
-            pdf_file = requests.get(pdf_url, headers=headers, verify=False)
-            with open(f'reestr.pdf', 'wb') as file:
-                file.write(pdf_file.content)
+            # Пока не надо
+            # pdf_file = requests.get(pdf_url, headers=headers, verify=False)
+            # with open(f'reestr.pdf', 'wb') as file:
+            #     file.write(pdf_file.content)
 
-            with open(f'ckeck_pdf_url.txt', 'w') as file:
-                file.write(pdf_url)
+            # with open(f'ckeck_pdf_url.txt', 'w') as file:
+            #     file.write(pdf_url)
 
         
         with pdfplumber.open('reestr.pdf') as pdf:
             for page in pdf.pages:
                 if inn in page.extract_text():
-                    print(f'{inn} присутсвует в реестре на {page.page_number} странице')
-        
-
-
+                    return f'{inn} присутсвует в реестре на {page.page_number} странице'
+            return 'no'
+                
     finally:
         pass
 
 
-def ten_site(): # Надо спросить
+def ten_site(fio: str): # Надо спросить
     try:
-        pass
+        # https://www.fedsfm.ru/documents/terr-list
+        print('-----ten_site start')
+        driver = webdriver.Remote(
+            command_executor="http://localhost:4444/wd/hub",
+            options=options  
+        )
+
+        
+        # inn = "5054004240"
+        driver.get(f"https://www.fedsfm.ru/documents/terr-list")
+        time.sleep(5)
+        form_for_fio = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//input[contains(@class, 'form-control')]"))
+        )
+        
+        form_for_fio.send_keys(fio)
+        form_for_fio.send_keys(Keys.RETURN)
+
+        result_info = WebDriverWait(driver, 10).until(
+            # EC.element_to_be_clickable((By.XPATH, "//input[contains(@class, 'form-control')]"))
+            EC.element_to_be_clickable((By.XPATH, "//tbody"))
+        )
+        driver.save_screenshot(f'./screenshot/ten_site/{fio}.png')
+        print(form_for_fio.get_attribute('outerHTML'))
+        print(len(result_info.get_attribute('outerHTML')))
+        print('-----ten_site start')
+        if len(result_info.get_attribute('outerHTML')) > 120:
+            return 'yes'
+        return 'no'
+    
     finally:
-        pass
+        driver.quit()
 
 
