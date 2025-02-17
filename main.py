@@ -7,6 +7,7 @@ import pdfplumber
 import shutil
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -20,6 +21,7 @@ from utils import USER_AGENTS, clear_result_folder, SELENIUM_HOST
 
 
 app = FastAPI()
+
 
 @app.get('/test')
 async def test():
@@ -127,7 +129,7 @@ async def main(inn: str):
 
 
     # clear_result_folder()
-    return five_site_info
+    return first_site_info
 
 
 random_user_agent = random.choice(USER_AGENTS)
@@ -136,7 +138,7 @@ headers = {
     'User-Agent': random.choice(USER_AGENTS)
 }
 
-download_dir = "." 
+download_dir = "./result" 
 
 options = webdriver.ChromeOptions()
 options.add_argument(f"user-agent={random_user_agent}")
@@ -159,32 +161,32 @@ def first_site(inn: str):
             command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
             options=options  
         )
-        # driver.get("https://egrul.nalog.ru/index.html")
+        driver.get("https://egrul.nalog.ru/index.html")
         
-        # input_inn = WebDriverWait(driver, 10).until(
-        #     EC.element_to_be_clickable((By.XPATH, "//input[@id='query']"))
-        # )
-        # print(input_inn.get_attribute('outerHTML'))
+        input_inn = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//input[@id='query']"))
+        )
+        print(input_inn.get_attribute('outerHTML'))
         
-        # input_inn.click()
-        # time.sleep(1)
+        input_inn.click()
+        time.sleep(1)
 
-        # input_inn.send_keys(inn)
-        # input_inn.send_keys(Keys.RETURN)
-        # time.sleep(15)
+        input_inn.send_keys(inn)
+        input_inn.send_keys(Keys.RETURN)
+        time.sleep(15)
         # result_title = WebDriverWait(driver, 20).until(
         #     EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'res-caption')]"))
         # ) 
         # result_info = WebDriverWait(driver, 20).until(
         #     EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'res-text')]"))
         # )
-        # button_for_download_pdf = WebDriverWait(driver, 20).until(
-        #     EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'btn-with-icon btn-excerpt op-excerpt')]"))
-        # )
+        button_for_download_pdf = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'btn-with-icon btn-excerpt op-excerpt')]"))
+        )
         
-        # button_for_download_pdf.click()
-       
-        # time.sleep(20)
+        button_for_download_pdf.click()
+        # !!! Добавить парсинг имени pdf файла
+        time.sleep(20)
         with pdfplumber.open("ul-1025002033110-20250212154136.pdf") as pdf:
             text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         
@@ -480,3 +482,22 @@ def ten_site(fio: str):
         print('-----ten_site end')
 
 
+origins = [
+    'http://localhost:8000',
+    'http://localhost:3000',
+    f'http://{SELENIUM_HOST}:4444',
+    f'http://{SELENIUM_HOST}:4444',
+    '*',
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=['GET', 'POST', 'OPTIONS', 'DELETE', 'PATCH', 'PUT'],
+    allow_headers=['Content-Type',
+                   'Set-Cookie',
+                   'Access-Control-Allow-Headers',
+                   'Access-Control-Allow-Origin',
+                   'Authorization'],
+)

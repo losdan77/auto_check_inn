@@ -8,7 +8,7 @@ services:
     shm_size: "2g"
     restart: unless-stopped
     volumes:
-      - shared_data:/app/result
+      - shared_data:/home/seluser/Downloads/
     networks:
       - app_network
 
@@ -16,11 +16,13 @@ services:
     build:
       context: .
     container_name: app
+    env_file:
+      - ./.env-non-dev
     command: ["/app/app.sh"]
     ports:
       - 8000:8000
     volumes:
-      - shared_data:/app/result
+      - shared_data:/app/result/
     networks:
       - app_network
 
