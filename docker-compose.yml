@@ -1,9 +1,32 @@
 
 services:
   selenium:
-    image: selenium/standalone-chrome:3.141.59-20210607
+    image: selenium/standalone-chrome:3.141.59
     container_name: selenium_chrome
     ports:
       - "4444:4444"
     shm_size: "2g"
     restart: unless-stopped
+    volumes:
+      - shared_data:/app/result
+    networks:
+      - app_network
+
+  app:
+    build:
+      context: .
+    container_name: app
+    command: ["/app/app.sh"]
+    ports:
+      - 8000:8000
+    volumes:
+      - shared_data:/app/result
+    networks:
+      - app_network
+
+volumes:
+  shared_data:
+
+networks:
+  app_network:
+    driver: bridge
