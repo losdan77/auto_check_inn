@@ -1,3 +1,4 @@
+import glob
 import re
 import random
 import requests
@@ -5,6 +6,7 @@ import time
 import datetime
 import pdfplumber
 import shutil
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,24 +25,16 @@ from utils import USER_AGENTS, clear_result_folder, SELENIUM_HOST
 app = FastAPI()
 
 
-@app.get('/test')
-async def test():
-    try:
-        now_time = str(datetime.datetime.now().strftime("%Y%m%d%H%M"))
-        shutil.make_archive(f'{now_time}', 'zip', './result')
-        return FileResponse(path=f'{now_time}.zip', filename=f'{now_time}.zip') # подумать как удалять его
-    finally:
-        # os.remove(f'{now_time}.zip')
-        pass
-
-
 @app.get('/main')
 async def main(inn: str):
     inn_firm = inn
     
     # 1 -------- файл качается в докер, надо шарить папку и раскоментить парс пдфа с сайта
+    # try:
+    #     first_site_info = first_site(inn = inn)
+    # except:
+    #     return 'Запустите еще раз'
     first_site_info = first_site(inn = inn)
-
       
     array_inn = [inn_firm]
     array_fio = []
@@ -51,20 +45,20 @@ async def main(inn: str):
     
     # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
     second_site_info = []
-    # for inn in array_inn:
-    #     info_dict = {f'{inn}': second_site(inn)}
-    #     second_site_info.append(info_dict)
+    for inn in array_inn:
+        info_dict = {f'{inn}': second_site(inn)}
+        second_site_info.append(info_dict)
 
 
     # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
-    # third_site_info = third_site(inn_firm) 
+    third_site_info = third_site(inn_firm) 
 
     
     # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
     fourth_site_info = []
-    # for inn in array_inn:
-    #     info_dict = {f'{inn}': fourth_site(inn)}
-    #     fourth_site_info.append(info_dict)
+    for inn in array_inn:
+        info_dict = {f'{inn}': fourth_site(inn)}
+        fourth_site_info.append(info_dict)
 
 
     # 5 --------
@@ -77,23 +71,23 @@ async def main(inn: str):
 
     # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
     seven_site_info = []
-    # for inn in array_inn:
-    #     info_dict = {f'{inn}': seven_site(inn)}
-    #     seven_site_info.append(info_dict)
+    for inn in array_inn:
+        info_dict = {f'{inn}': seven_site(inn)}
+        seven_site_info.append(info_dict)
 
 
     # 9 -------- файл и данные есть (файл в докере)
     nine_site_info = []
-    # for inn in array_inn:
-    #     info_dict = {f'{inn}': nine_site(inn)}
-    #     nine_site_info.append(info_dict)
+    for inn in array_inn:
+        info_dict = {f'{inn}': nine_site(inn)}
+        nine_site_info.append(info_dict)
     
 
     # 10 -------- скрины и данные есть
     ten_site_info = []
-    # for fio in array_fio:
-    #     info_dict = {f'{fio}': ten_site(fio=fio)}
-    #     ten_site_info.append(info_dict)
+    for fio in array_fio:
+        info_dict = {f'{fio}': ten_site(fio=fio)}
+        ten_site_info.append(info_dict)
 
     document = Document()
     document.add_heading(f'ИНН проверяемой фирмы: {inn_firm} - {first_site_info[0]}')
@@ -127,9 +121,14 @@ async def main(inn: str):
 
     document.save(f'./result/{inn_firm}.docx')
 
-
-    # clear_result_folder()
-    return first_site_info
+    try:
+        now_time = str(datetime.datetime.now().strftime("%Y%m%d%H%M"))
+        shutil.make_archive(f'{now_time}', 'zip', './result')
+        return FileResponse(path=f'{now_time}.zip', filename=f'{now_time}.zip') # подумать как удалять его
+    finally:
+        # os.remove(f'{now_time}.zip')
+        clear_result_folder()
+        pass
 
 
 random_user_agent = random.choice(USER_AGENTS)
@@ -185,9 +184,10 @@ def first_site(inn: str):
         )
         
         button_for_download_pdf.click()
-        # !!! Добавить парсинг имени pdf файла
         time.sleep(20)
-        with pdfplumber.open("ul-1025002033110-20250212154136.pdf") as pdf:
+        pdf_file = glob.glob("./result/ul-*.pdf")
+        
+        with pdfplumber.open(f'{pdf_file[0]}') as pdf:
             text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         
         firm_name_pattern = r"1 Полное наименование на русском языке(.*?)2"
@@ -380,6 +380,8 @@ def five_site(inn: str):
         
 
         print('-----five_site end')
+    except:
+        pass
     finally:
         driver.quit()
 
@@ -418,34 +420,76 @@ def seven_site(inn: str):
 def nine_site(inn: str): # Впринципе готово (проблема по MIMA)
     try:
         print('-----nine_site start')
-        url = 'https://minjust.gov.ru/ru/activity/directions/998/'
-        response = requests.get(url, headers=headers, verify=False)
+        # url = 'https://minjust.gov.ru/ru/activity/directions/998/'
+        # response = requests.get(url, headers=headers, verify=False)
 
-        soup = BeautifulSoup(response.text, 'lxml')
-        pdf_src = soup.find(class_='page-block-text').find_all('a')[1]['href']
-        pdf_url = 'https://minjust.gov.ru' + pdf_src
+        # soup = BeautifulSoup(response.text, 'lxml')
+        # pdf_src = soup.find(class_='page-block-text').find_all('a')[1]['href']
+        # pdf_url = 'https://minjust.gov.ru' + pdf_src
         
-        with open(f'ckeck_pdf_url.txt', 'r') as file:
-            last_pdf_url = file.readline()
+        # with open(f'ckeck_pdf_url.txt', 'r') as file:
+        #     last_pdf_url = file.readline()
 
-        if last_pdf_url != pdf_url:
-            print('качаем')
+        # if last_pdf_url != pdf_url:
+        #     print('качаем')
             
-            # pdf_file = requests.get(pdf_url, headers=headers, verify=False)
-            # with open(f'reestr.pdf', 'wb') as file:
-            #     file.write(pdf_file.content)
+        #     pdf_file = requests.get(pdf_url, headers=headers, verify=False)
+        #     with open(f'reestr.pdf', 'wb') as file:
+        #         file.write(pdf_file.content)
 
-            # with open(f'ckeck_pdf_url.txt', 'w') as file:
-            #     file.write(pdf_url)
+        #     with open(f'ckeck_pdf_url.txt', 'w') as file:
+        #         file.write(pdf_url)
 
-        
-        with pdfplumber.open('reestr.pdf') as pdf:
-            for page in pdf.pages:
-                if inn in page.extract_text():
-                    return f'{inn} присутсвует в реестре на {page.page_number} странице'
-            return 'нет'
-                
+        # time.sleep(5)
+        # with pdfplumber.open('reestr.pdf') as pdf:
+        #     for page in pdf.pages:
+        #         if inn in page.extract_text():
+        #             return f'{inn} присутсвует в реестре на {page.page_number} странице'
+        #     return 'нет'
+
+        excel_file = glob.glob("./result/export.xlsx")
+        if not excel_file:
+            url = 'https://minjust.gov.ru/ru/pages/reestr-inostryannykh-agentov/'
+            driver = webdriver.Remote(
+                command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+                options=options  
+            )
+            driver.get(url)
+            button_for_download_excel = WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Загрузить реестр')]"))
+            )
+            
+            button_for_download_excel.click()
+            time.sleep(20)
+            driver.quit()
+
+        excel_path = "./result/export.xlsx"
+        target_inn = inn
+
+        try:
+            # Читаем Excel-файл
+            df = pd.read_excel(excel_path, engine='openpyxl')
+            
+            # Проверяем, достаточно ли столбцов в файле
+            if df.shape[1] < 9:
+                print("Файл содержит меньше 9 столбцов, столбец 'I' отсутствует.")
+                exit()
+            
+            # Получаем данные из столбца 'I' (девятый столбец, индекс 8)
+            column_i = df.iloc[:, 8].astype(str)
+            
+            # Проверяем наличие ИНН в столбце 'I'
+            if target_inn in column_i.values:
+                return 'присутствует в реестре'
+            else:
+                return 'нет'
+
+        except FileNotFoundError:
+            print(f"Файл {excel_path} не найден.")
+        except Exception as e:
+            print(f"Произошла ошибка: {e}")
     finally:
+        
         print('-----nine_site end')
 
 
