@@ -19,7 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
 from docx import Document
 
-from utils import USER_AGENTS, clear_result_folder, SELENIUM_HOST
+from utils import USER_AGENTS, clear_result_folder, SELENIUM_HOST, SELENIUM_PORT
 
 
 app = FastAPI()
@@ -30,64 +30,68 @@ async def main(inn: str):
     inn_firm = inn
     
     # 1 -------- файл качается в докер, надо шарить папку и раскоментить парс пдфа с сайта
-    # try:
-    #     first_site_info = first_site(inn = inn)
-    # except:
-    #     return 'Запустите еще раз'
-    first_site_info = first_site(inn = inn)
-      
-    array_inn = [inn_firm]
-    array_fio = []
-    for info in first_site_info[1]:
-        array_inn.append(info['inn'])
-        array_fio.append(f'{info['surname']} {info['name']} {info['patronymic']}')
-
+    try:
+        first_site_info = first_site(inn = inn)
+        print(first_site_info)
     
-    # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
-    second_site_info = []
-    for inn in array_inn:
-        info_dict = {f'{inn}': second_site(inn)}
-        second_site_info.append(info_dict)
+        # first_site_info = first_site(inn = inn)
+        
+        array_inn = [inn_firm]
+        array_fio = []
+        for info in first_site_info[1]:
+            array_inn.append(info['inn'])
+            array_fio.append(f'{info['surname']} {info['name']} {info['patronymic']}')
+
+        
+        # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
+        second_site_info = []
+        for inn in array_inn:
+            info_dict = {f'{inn}': second_site(inn)}
+            second_site_info.append(info_dict)
 
 
-    # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
-    third_site_info = third_site(inn_firm) 
+        # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
+        third_site_info = third_site(inn_firm) 
 
-    
-    # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
-    fourth_site_info = []
-    for inn in array_inn:
-        info_dict = {f'{inn}': fourth_site(inn)}
-        fourth_site_info.append(info_dict)
-
-
-    # 5 --------
-    # five_site_info = []
-    # for inn in array_inn:
-    #     info_dict = {f'{inn}': five_site(inn)}
-    #     five_site_info.append(info_dict)
-    five_site_info = five_site(inn)
+        
+        # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
+        fourth_site_info = []
+        for inn in array_inn:
+            info_dict = {f'{inn}': fourth_site(inn)}
+            fourth_site_info.append(info_dict)
 
 
-    # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
-    seven_site_info = []
-    for inn in array_inn:
-        info_dict = {f'{inn}': seven_site(inn)}
-        seven_site_info.append(info_dict)
+        # 5 --------
+        # five_site_info = []
+        # for inn in array_inn:
+        #     info_dict = {f'{inn}': five_site(inn)}
+        #     five_site_info.append(info_dict)
+        five_site_info = five_site(inn)
 
 
-    # 9 -------- файл и данные есть (файл в докере)
-    nine_site_info = []
-    for inn in array_inn:
-        info_dict = {f'{inn}': nine_site(inn)}
-        nine_site_info.append(info_dict)
-    
+        # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
+        seven_site_info = []
+        for inn in array_inn:
+            info_dict = {f'{inn}': seven_site(inn)}
+            seven_site_info.append(info_dict)
 
-    # 10 -------- скрины и данные есть
-    ten_site_info = []
-    for fio in array_fio:
-        info_dict = {f'{fio}': ten_site(fio=fio)}
-        ten_site_info.append(info_dict)
+
+        # 9 -------- файл и данные есть (файл в докере)
+        nine_site_info = []
+        for inn in array_inn:
+            info_dict = {f'{inn}': nine_site(inn)}
+            nine_site_info.append(info_dict)
+        
+
+        # 10 -------- скрины и данные есть
+        ten_site_info = []
+        for fio in array_fio:
+            info_dict = {f'{fio}': ten_site(fio=fio)}
+            ten_site_info.append(info_dict)
+
+    except:
+        clear_result_folder()
+        return 'Запустите еще раз'
 
     document = Document()
     document.add_heading(f'ИНН проверяемой фирмы: {inn_firm} - {first_site_info[0]}')
@@ -125,6 +129,9 @@ async def main(inn: str):
         now_time = str(datetime.datetime.now().strftime("%Y%m%d%H%M"))
         shutil.make_archive(f'{now_time}', 'zip', './result')
         return FileResponse(path=f'{now_time}.zip', filename=f'{now_time}.zip') # подумать как удалять его
+    except:
+        # clear_result_folder()
+        return 'Запустите еще раз'
     finally:
         # os.remove(f'{now_time}.zip')
         clear_result_folder()
@@ -157,7 +164,7 @@ def first_site(inn: str):
         print('-----first_site start')
 
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get("https://egrul.nalog.ru/index.html")
@@ -230,7 +237,7 @@ def second_site(inn: str):
 
         ##############################
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options
         )
         driver.get(f"https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString={inn}&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=one")
@@ -252,7 +259,7 @@ def third_site(inn: str):
         print('-----third_site start')
 
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get(f"https://pb.nalog.ru/index.html")
@@ -292,7 +299,7 @@ def fourth_site(inn: str):
         print('-----fourth_site start')
 
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get(f"https://fedresurs.ru/entities?searchString={inn}")
@@ -320,7 +327,7 @@ def five_site(inn: str):
         # proxy = "http://V84kEe:XhAdiJu5Ej@45.15.72.224:5500"
         # options.add_argument(f"--proxy-server={proxy}")
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         
@@ -400,7 +407,7 @@ def seven_site(inn: str):
         print(len(result_info.text))
         ##############################
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get(f"https://zakupki.gov.ru/epz/main/public/document/search.html?searchString={inn}&sectionId=2369&strictEqual=false")
@@ -451,7 +458,7 @@ def nine_site(inn: str): # Впринципе готово (проблема п�
         if not excel_file:
             url = 'https://minjust.gov.ru/ru/pages/reestr-inostryannykh-agentov/'
             driver = webdriver.Remote(
-                command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+                command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
                 options=options  
             )
             driver.get(url)
@@ -497,7 +504,7 @@ def ten_site(fio: str):
     try:
         print('-----ten_site start')
         driver = webdriver.Remote(
-            command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
+            command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get(f"https://www.fedsfm.ru/documents/terr-list")
@@ -529,8 +536,8 @@ def ten_site(fio: str):
 origins = [
     'http://localhost:8000',
     'http://localhost:3000',
-    f'http://{SELENIUM_HOST}:4444',
-    f'http://{SELENIUM_HOST}:4444',
+    f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
+    f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
     '*',
 ]
 
