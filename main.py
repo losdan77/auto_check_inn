@@ -55,7 +55,7 @@ async def main(inn: str):
         fourth_site_tasks = [asyncio.to_thread(fourth_site, inn) for inn in array_inn]
         seven_site_tasks = [asyncio.to_thread(seven_site, inn) for inn in array_inn]
         # nine_site_tasks = [asyncio.to_thread(nine_site, inn) for inn in array_inn]
-        ten_site_tasks = [asyncio.to_thread(ten_site, fio) for fio in array_fio]
+        # ten_site_tasks = [asyncio.to_thread(ten_site, fio) for fio in array_fio]
 
         logger.info(f'Начал асинхронный проход по сайтам')
         (
@@ -63,13 +63,13 @@ async def main(inn: str):
             fourth_site_info,
             seven_site_info,
             # nine_site_info,
-            ten_site_info,
+            # ten_site_info,
         ) = await asyncio.gather(
             asyncio.gather(*second_site_tasks),
             asyncio.gather(*fourth_site_tasks),
             asyncio.gather(*seven_site_tasks),
             # asyncio.gather(*nine_site_tasks),
-            asyncio.gather(*ten_site_tasks),
+            # asyncio.gather(*ten_site_tasks),
         )
         logger.info(f'Закончил асинхронный проход по сайтам')
         # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
@@ -113,13 +113,16 @@ async def main(inn: str):
             info_dict = nine_site(inn)
             nine_site_info.append(info_dict)
         
-        logger.info(f'Закончил синхронный проход по сайтам')
+        
         # 10 -------- скрины и данные есть
-        # ten_site_info = []
-        # for fio in array_fio:
-        #     info_dict = ten_site(fio=fio)
-        #     ten_site_info.append(info_dict)
+        ten_site_info = []
+        for fio in array_fio:
+            info_dict = ten_site(fio=fio)
+            ten_site_info.append(info_dict)
+
+        logger.info(f'Закончил синхронный проход по сайтам')
         logger.info(f'Закончил проход по сайтам')
+
     except Exception as e:
         logger.error(f'Ошибка при прохождении сайтов: {e}')
         time.sleep(5)
@@ -560,7 +563,7 @@ def ten_site(fio: str):
         form_for_fio.send_keys(fio)
         form_for_fio.send_keys(Keys.RETURN)
 
-        time.sleep(10)
+        time.sleep(5)
         try:
             WebDriverWait(driver, 5).until(EC.alert_is_present())
             alert = driver.switch_to.alert
