@@ -6,6 +6,7 @@ import time
 import datetime
 import pdfplumber
 import shutil
+import asyncio
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -33,8 +34,6 @@ async def main(inn: str):
     try:
         first_site_info = first_site(inn = inn)
         print(first_site_info)
-    
-        # first_site_info = first_site(inn = inn)
         
         array_inn = [inn_firm]
         array_fio = []
@@ -43,11 +42,31 @@ async def main(inn: str):
             array_fio.append(f'{info['surname']} {info['name']} {info['patronymic']}')
 
         
+        second_site_tasks = [asyncio.to_thread(second_site, inn) for inn in array_inn]
+        fourth_site_tasks = [asyncio.to_thread(fourth_site, inn) for inn in array_inn]
+        seven_site_tasks = [asyncio.to_thread(seven_site, inn) for inn in array_inn]
+        nine_site_tasks = [asyncio.to_thread(nine_site, inn) for inn in array_inn]
+        ten_site_tasks = [asyncio.to_thread(ten_site, fio) for fio in array_fio]
+
+        (
+            second_site_info,
+            fourth_site_info,
+            seven_site_info,
+            nine_site_info,
+            ten_site_info,
+        ) = await asyncio.gather(
+            asyncio.gather(*second_site_tasks),
+            asyncio.gather(*fourth_site_tasks),
+            asyncio.gather(*seven_site_tasks),
+            asyncio.gather(*nine_site_tasks),
+            asyncio.gather(*ten_site_tasks),
+        )
         # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
-        second_site_info = []
-        for inn in array_inn:
-            info_dict = {f'{inn}': second_site(inn)}
-            second_site_info.append(info_dict)
+
+        # second_site_info = []
+        # for inn in array_inn:
+        #     info_dict = second_site(inn)
+        #     second_site_info.append(info_dict)
 
 
         # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
@@ -55,10 +74,10 @@ async def main(inn: str):
 
         
         # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
-        fourth_site_info = []
-        for inn in array_inn:
-            info_dict = {f'{inn}': fourth_site(inn)}
-            fourth_site_info.append(info_dict)
+        # fourth_site_info = []
+        # for inn in array_inn:
+        #     info_dict = fourth_site(inn)
+        #     fourth_site_info.append(info_dict)
 
 
         # 5 --------
@@ -70,28 +89,28 @@ async def main(inn: str):
 
 
         # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
-        seven_site_info = []
-        for inn in array_inn:
-            info_dict = {f'{inn}': seven_site(inn)}
-            seven_site_info.append(info_dict)
+        # seven_site_info = []
+        # for inn in array_inn:
+        #     info_dict = seven_site(inn)
+        #     seven_site_info.append(info_dict)
 
 
         # 9 -------- файл и данные есть (файл в докере)
-        nine_site_info = []
-        for inn in array_inn:
-            info_dict = {f'{inn}': nine_site(inn)}
-            nine_site_info.append(info_dict)
+        # nine_site_info = []
+        # for inn in array_inn:
+        #     info_dict = nine_site(inn)
+        #     nine_site_info.append(info_dict)
         
 
         # 10 -------- скрины и данные есть
-        ten_site_info = []
-        for fio in array_fio:
-            info_dict = {f'{fio}': ten_site(fio=fio)}
-            ten_site_info.append(info_dict)
+        # ten_site_info = []
+        # for fio in array_fio:
+        #     info_dict = ten_site(fio=fio)
+        #     ten_site_info.append(info_dict)
 
-    except:
+    except Exception as e:
         clear_result_folder()
-        return 'Запустите еще раз'
+        return 'Запустите еще раз', e
 
     document = Document()
     document.add_heading(f'ИНН проверяемой фирмы: {inn_firm} - {first_site_info[0]}')
@@ -247,8 +266,8 @@ def second_site(inn: str):
         #############################
         
         if len(result_info.text) > 10:
-            return 'да'
-        return 'нет'
+            return {f'{inn}': 'да'}
+        return {f'{inn}': 'нет'}
         
     finally:
         print('-----second_site end')
@@ -313,8 +332,8 @@ def fourth_site(inn: str):
         driver.save_screenshot(f'./result/screenshot/fourth_site/{inn}.png')
         
         if len(result.get_attribute('outerHTML')) > 7000:
-            return 'да'
-        return 'нет'
+            return {f'{inn}': 'да'}
+        return {f'{inn}': 'нет'}
     finally:
         driver.quit()
         print('-----fourth_site end')
@@ -416,8 +435,8 @@ def seven_site(inn: str):
         #############################
         
         if len(result_info.text) > 100:
-            return 'да'
-        return 'нет'
+            return {f'{inn}': 'да'}
+        return {f'{inn}': 'нет'}
     
     finally:
         driver.quit()
@@ -487,9 +506,9 @@ def nine_site(inn: str): # Впринципе готово (проблема п�
             
             # Проверяем наличие ИНН в столбце 'I'
             if target_inn in column_i.values:
-                return 'присутствует в реестре'
+                return {f'{inn}': 'присутствует в реестре'}
             else:
-                return 'нет'
+                return {f'{inn}': 'нет'}
 
         except FileNotFoundError:
             print(f"Файл {excel_path} не найден.")
@@ -525,30 +544,30 @@ def ten_site(fio: str):
     
         
         if len(result_info.get_attribute('outerHTML')) > 120:
-            return 'да'
-        return 'нет'
+            return {f'{fio}': 'да'}
+        return {f'{fio}': 'нет'}
     
     finally:
         driver.quit()
         print('-----ten_site end')
 
 
-origins = [
-    'http://localhost:8000',
-    'http://localhost:3000',
-    f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
-    f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
-    '*',
-]
+# origins = [
+#     'http://localhost:8000',
+#     'http://localhost:3000',
+#     f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
+#     f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
+#     '*',
+# ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=['GET', 'POST', 'OPTIONS', 'DELETE', 'PATCH', 'PUT'],
-    allow_headers=['Content-Type',
-                   'Set-Cookie',
-                   'Access-Control-Allow-Headers',
-                   'Access-Control-Allow-Origin',
-                   'Authorization'],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=['GET', 'POST', 'OPTIONS', 'DELETE', 'PATCH', 'PUT'],
+#     allow_headers=['Content-Type',
+#                    'Set-Cookie',
+#                    'Access-Control-Allow-Headers',
+#                    'Access-Control-Allow-Origin',
+#                    'Authorization'],
+# )
