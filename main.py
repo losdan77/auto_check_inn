@@ -7,6 +7,7 @@ import datetime
 import pdfplumber
 import shutil
 import asyncio
+import logging
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -23,6 +24,10 @@ from docx import Document
 from utils import USER_AGENTS, clear_result_folder, SELENIUM_HOST, SELENIUM_PORT
 
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
 app = FastAPI()
 
 
@@ -32,8 +37,12 @@ async def main(inn: str):
     
     # 1 -------- файл качается в докер, надо шарить папку и раскоментить парс пдфа с сайта
     try:
+        logger.info(f'Начал проход по сайтам')
+        start_time = time.time()
+        
         first_site_info = first_site(inn = inn)
-        print(first_site_info)
+
+        logger.info(f'Конец первого сайта, результаты: {first_site_info}')
         
         array_inn = [inn_firm]
         array_fio = []
@@ -45,24 +54,26 @@ async def main(inn: str):
         second_site_tasks = [asyncio.to_thread(second_site, inn) for inn in array_inn]
         fourth_site_tasks = [asyncio.to_thread(fourth_site, inn) for inn in array_inn]
         seven_site_tasks = [asyncio.to_thread(seven_site, inn) for inn in array_inn]
-        nine_site_tasks = [asyncio.to_thread(nine_site, inn) for inn in array_inn]
+        # nine_site_tasks = [asyncio.to_thread(nine_site, inn) for inn in array_inn]
         ten_site_tasks = [asyncio.to_thread(ten_site, fio) for fio in array_fio]
 
+        logger.info(f'Начал асинхронный проход по сайтам')
         (
             second_site_info,
             fourth_site_info,
             seven_site_info,
-            nine_site_info,
+            # nine_site_info,
             ten_site_info,
         ) = await asyncio.gather(
             asyncio.gather(*second_site_tasks),
             asyncio.gather(*fourth_site_tasks),
             asyncio.gather(*seven_site_tasks),
-            asyncio.gather(*nine_site_tasks),
+            # asyncio.gather(*nine_site_tasks),
             asyncio.gather(*ten_site_tasks),
         )
+        logger.info(f'Закончил асинхронный проход по сайтам')
         # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
-
+        
         # second_site_info = []
         # for inn in array_inn:
         #     info_dict = second_site(inn)
@@ -70,6 +81,7 @@ async def main(inn: str):
 
 
         # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
+        logger.info(f'Начал синхронный проход по сайтам')
         third_site_info = third_site(inn_firm) 
 
         
@@ -96,22 +108,25 @@ async def main(inn: str):
 
 
         # 9 -------- файл и данные есть (файл в докере)
-        # nine_site_info = []
-        # for inn in array_inn:
-        #     info_dict = nine_site(inn)
-        #     nine_site_info.append(info_dict)
+        nine_site_info = []
+        for inn in array_inn:
+            info_dict = nine_site(inn)
+            nine_site_info.append(info_dict)
         
-
+        logger.info(f'Закончил синхронный проход по сайтам')
         # 10 -------- скрины и данные есть
         # ten_site_info = []
         # for fio in array_fio:
         #     info_dict = ten_site(fio=fio)
         #     ten_site_info.append(info_dict)
-
+        logger.info(f'Закончил проход по сайтам')
     except Exception as e:
+        logger.error(f'Ошибка при прохождении сайтов: {e}')
+        time.sleep(5)
         clear_result_folder()
         return 'Запустите еще раз', e
 
+    logger.info(f'Начал формировать ворд')
     document = Document()
     document.add_heading(f'ИНН проверяемой фирмы: {inn_firm} - {first_site_info[0]}')
     
@@ -143,18 +158,27 @@ async def main(inn: str):
         document.add_paragraph(f'{info}')
 
     document.save(f'./result/{inn_firm}.docx')
+    logger.info(f'Закончил формировать ворд')
 
     try:
         now_time = str(datetime.datetime.now().strftime("%Y%m%d%H%M"))
         shutil.make_archive(f'{now_time}', 'zip', './result')
+
+        end_time = time.time()
+        process_time = end_time - start_time
+        logger.info(f'Закончил выполнение работы, времени затрачено: {process_time}')
+
         return FileResponse(path=f'{now_time}.zip', filename=f'{now_time}.zip') # подумать как удалять его
-    except:
-        # clear_result_folder()
+    
+    except Exception as e:
+        logger.error(f'Ошибка при отдаче зипника: {e}')
         return 'Запустите еще раз'
+    
     finally:
         # os.remove(f'{now_time}.zip')
         clear_result_folder()
-        pass
+        logger.info(f'Очистил папку с результатми')
+        
 
 
 random_user_agent = random.choice(USER_AGENTS)
@@ -180,7 +204,7 @@ options.add_experimental_option("prefs", {
 
 def first_site(inn: str):
     try:
-        print('-----first_site start')
+        logger.info('Начало первого сайта')
 
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
@@ -235,17 +259,20 @@ def first_site(inn: str):
                 'inn': inn,
             }
             all_partition_result.append(result_dict)
-            
-        return firm_name, all_partition_result
         
+        logger.info(f'Конец первого сайта, результаты: {firm_name, all_partition_result}')
+        return firm_name, all_partition_result
+    
+    except Exception as e:
+        logger.error(f'Ошибка в первом сайте: {e}')
     finally:
         driver.quit()
-        print('-----first_site end')
+        
 
 
 def second_site(inn: str):
     try:
-        print('-----second_site start')
+        logger.info('Начало второго сайта')
     
         url = f"https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString={inn}&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=on"
         
@@ -265,17 +292,20 @@ def second_site(inn: str):
         driver.save_screenshot(f'./result/screenshot/second_site/{inn}.png')
         #############################
         
+        logger.info('Конец второго сайта')
         if len(result_info.text) > 10:
             return {f'{inn}': 'да'}
         return {f'{inn}': 'нет'}
-        
+    
+    except Exception as e:
+        logger.error(f'Ошибка во втором сайте: {e}')
     finally:
-        print('-----second_site end')
+        driver.quit()
 
 
 def third_site(inn: str):
     try:
-        print('-----third_site start')
+        logger.info('Начало третьего сайта')
 
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
@@ -308,14 +338,18 @@ def third_site(inn: str):
         ActionChains(driver).scroll_to_element(result_info).perform()
         driver.save_screenshot(f'./result/screenshot/third_site/3_{inn}.png')
 
+        logger.info('Конец третьего сайта')
+
+    except Exception as e:
+        logger.error(f'Ошибка в третьем сайте: {e}')
     finally:
         driver.quit()
-        print('-----third_site end')
+        
 
 
 def fourth_site(inn: str):
     try:
-        print('-----fourth_site start')
+        logger.info('Начало четвертого сайта')
 
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
@@ -331,17 +365,20 @@ def fourth_site(inn: str):
 
         driver.save_screenshot(f'./result/screenshot/fourth_site/{inn}.png')
         
+        logger.info('Конец четвертого сайта')
         if len(result.get_attribute('outerHTML')) > 7000:
             return {f'{inn}': 'да'}
         return {f'{inn}': 'нет'}
+    
+    except Exception as e:
+        logger.error(f'Ошибка в четвертом сайте: {e}')
     finally:
         driver.quit()
-        print('-----fourth_site end')
 
 
 def five_site(inn: str):
     try:
-        print('-----five_site start')
+        logger.info('Начало пятого сайта')
         # inn = "5054004240"
         # proxy = "http://V84kEe:XhAdiJu5Ej@45.15.72.224:5500"
         # options.add_argument(f"--proxy-server={proxy}")
@@ -405,16 +442,17 @@ def five_site(inn: str):
         # print(result_info.get_attribute('outerHTML'))
         
 
-        print('-----five_site end')
-    except:
-        pass
+        logger.info('Конец пятого сайта')
+
+    except Exception as e:
+        logger.error(f'Ошибка в пятом сайте: {e}')
     finally:
         driver.quit()
 
 
 def seven_site(inn: str):
     try:
-        print('-----seven_site start')
+        logger.info('Начало седьмого сайта')
 
         url = f'https://zakupki.gov.ru/epz/main/public/document/search.html?searchString={inn}&sectionId=2369&strictEqual=false'
 
@@ -434,94 +472,79 @@ def seven_site(inn: str):
         driver.save_screenshot(f'./result/screenshot/seven_site/{inn}.png')
         #############################
         
+        logger.info('Конец седьмого сайта')
         if len(result_info.text) > 100:
             return {f'{inn}': 'да'}
         return {f'{inn}': 'нет'}
     
+    except Exception as e:
+        logger.error(f'Ошибка в седьмом сайте: {e}')
     finally:
         driver.quit()
-        print('-----seven_site end')
 
 
 def nine_site(inn: str): # Впринципе готово (проблема по MIMA)
-    try:
-        print('-----nine_site start')
-        # url = 'https://minjust.gov.ru/ru/activity/directions/998/'
-        # response = requests.get(url, headers=headers, verify=False)
+ 
+    logger.info('Начало девятого сайта')
 
-        # soup = BeautifulSoup(response.text, 'lxml')
-        # pdf_src = soup.find(class_='page-block-text').find_all('a')[1]['href']
-        # pdf_url = 'https://minjust.gov.ru' + pdf_src
-        
-        # with open(f'ckeck_pdf_url.txt', 'r') as file:
-        #     last_pdf_url = file.readline()
-
-        # if last_pdf_url != pdf_url:
-        #     print('качаем')
-            
-        #     pdf_file = requests.get(pdf_url, headers=headers, verify=False)
-        #     with open(f'reestr.pdf', 'wb') as file:
-        #         file.write(pdf_file.content)
-
-        #     with open(f'ckeck_pdf_url.txt', 'w') as file:
-        #         file.write(pdf_url)
-
-        # time.sleep(5)
-        # with pdfplumber.open('reestr.pdf') as pdf:
-        #     for page in pdf.pages:
-        #         if inn in page.extract_text():
-        #             return f'{inn} присутсвует в реестре на {page.page_number} странице'
-        #     return 'нет'
-
-        excel_file = glob.glob("./result/export.xlsx")
-        if not excel_file:
+    excel_file = glob.glob("./result/export.xlsx")
+    if not excel_file:
+        try:
+            logger.info('Качаем эксель девятого сайта')
             url = 'https://minjust.gov.ru/ru/pages/reestr-inostryannykh-agentov/'
             driver = webdriver.Remote(
                 command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
                 options=options  
             )
             driver.get(url)
+
+            time.sleep(10)
+
             button_for_download_excel = WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Загрузить реестр')]"))
             )
             
             button_for_download_excel.click()
             time.sleep(20)
+            logger.info('Закончили качать эксель девятого сайта')
+
+        except Exception as e:
+            logger.error(f'Ошибка в скачивании экселя с девятого сайта: {e}')
+        finally:
             driver.quit()
 
-        excel_path = "./result/export.xlsx"
-        target_inn = inn
+    excel_path = "./result/export.xlsx"
+    target_inn = inn
 
-        try:
-            # Читаем Excel-файл
-            df = pd.read_excel(excel_path, engine='openpyxl')
-            
-            # Проверяем, достаточно ли столбцов в файле
-            if df.shape[1] < 9:
-                print("Файл содержит меньше 9 столбцов, столбец 'I' отсутствует.")
-                exit()
-            
-            # Получаем данные из столбца 'I' (девятый столбец, индекс 8)
-            column_i = df.iloc[:, 8].astype(str)
-            
-            # Проверяем наличие ИНН в столбце 'I'
-            if target_inn in column_i.values:
-                return {f'{inn}': 'присутствует в реестре'}
-            else:
-                return {f'{inn}': 'нет'}
-
-        except FileNotFoundError:
-            print(f"Файл {excel_path} не найден.")
-        except Exception as e:
-            print(f"Произошла ошибка: {e}")
-    finally:
+    try:
+        # Читаем Excel-файл
+        df = pd.read_excel(excel_path, engine='openpyxl')
         
-        print('-----nine_site end')
+        # Проверяем, достаточно ли столбцов в файле
+        if df.shape[1] < 9:
+            print("Файл содержит меньше 9 столбцов, столбец 'I' отсутствует.")
+            exit()
+        
+        # Получаем данные из столбца 'I' (девятый столбец, индекс 8)
+        column_i = df.iloc[:, 8].astype(str)
+        
+        # Проверяем наличие ИНН в столбце 'I'
+        if target_inn in column_i.values:
+            return {f'{inn}': 'присутствует в реестре'}
+        else:
+            return {f'{inn}': 'нет'}
+
+    except FileNotFoundError:
+        logger.error('Файл девятого сайта не найден')
+    except Exception as e:
+        logger.error(f'Ошибка при парсинге экселя девятого сайта: {e}')
+
 
 
 def ten_site(fio: str):
     try:
-        print('-----ten_site start')
+        logger.info('Начало десятого сайта')
+
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
@@ -537,37 +560,29 @@ def ten_site(fio: str):
         form_for_fio.send_keys(fio)
         form_for_fio.send_keys(Keys.RETURN)
 
-        result_info = WebDriverWait(driver, 10).until(
+        time.sleep(10)
+        try:
+            WebDriverWait(driver, 5).until(EC.alert_is_present())
+            alert = driver.switch_to.alert
+            print(f"Alert text: {alert.text}")
+            alert.accept()  # Закрыть alert
+        except:
+            pass
+        time.sleep(5)
+
+        result_info = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.XPATH, "//tbody"))
         )
         driver.save_screenshot(f'./result/screenshot/ten_site/{fio}.png')
     
-        
+        logger.info('Конец десятого сайта')
         if len(result_info.get_attribute('outerHTML')) > 120:
             return {f'{fio}': 'да'}
         return {f'{fio}': 'нет'}
     
+    except Exception as e:
+        logger.error(f'Ошибка в десятом сайте: {e}')
+        return {f'{fio}': 'НЕ ИЗВЕСТНО (Необходимо проверить вручную)'}
+
     finally:
         driver.quit()
-        print('-----ten_site end')
-
-
-# origins = [
-#     'http://localhost:8000',
-#     'http://localhost:3000',
-#     f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
-#     f'http://{SELENIUM_HOST}:{SELENIUM_PORT}',
-#     '*',
-# ]
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=['GET', 'POST', 'OPTIONS', 'DELETE', 'PATCH', 'PUT'],
-#     allow_headers=['Content-Type',
-#                    'Set-Cookie',
-#                    'Access-Control-Allow-Headers',
-#                    'Access-Control-Allow-Origin',
-#                    'Authorization'],
-# )
