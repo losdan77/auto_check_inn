@@ -1,5 +1,6 @@
 import glob
 import re
+import os
 import random
 import requests
 import time
@@ -31,137 +32,147 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 
-@app.get('/main')
-async def main(inn: str):
-    inn_firm = inn
+@app.post('/main')
+async def main(inn_list: str):
+    inn_list = inn_list.split(',')
+
+    number_answer = 0
+
+    for inn in inn_list:
+        number_answer += 1
+        logger.info(f'Начал {number_answer} итерацию инн:{inn}')
+        inn_firm = inn
+        
+        # 1 -------- файл качается в докер, надо шарить папку и раскоментить парс пдфа с сайта
+        try:
+            logger.info(f'Начал проход по сайтам')
+            start_time = time.time()
+            
+            first_site_info = first_site(inn = inn, number_answer=number_answer)
+
+            logger.info(f'Конец первого сайта, результаты: {first_site_info}')
+            
+            array_inn = [inn_firm]
+            array_fio = []
+            for info in first_site_info[1]:
+                array_inn.append(info['inn'])
+                array_fio.append(f'{info['surname']} {info['name']} {info['patronymic']}')
+
+            
+            second_site_tasks = [asyncio.to_thread(second_site, inn, number_answer) for inn in array_inn]
+            fourth_site_tasks = [asyncio.to_thread(fourth_site, inn, number_answer) for inn in array_inn]
+            seven_site_tasks = [asyncio.to_thread(seven_site, inn, number_answer) for inn in array_inn]
+            # nine_site_tasks = [asyncio.to_thread(nine_site, inn) for inn in array_inn]
+            # ten_site_tasks = [asyncio.to_thread(ten_site, fio) for fio in array_fio]
+
+            logger.info(f'Начал асинхронный проход по сайтам')
+            (
+                second_site_info,
+                fourth_site_info,
+                seven_site_info,
+                # nine_site_info,
+                # ten_site_info,
+            ) = await asyncio.gather(
+                asyncio.gather(*second_site_tasks),
+                asyncio.gather(*fourth_site_tasks),
+                asyncio.gather(*seven_site_tasks),
+                # asyncio.gather(*nine_site_tasks),
+                # asyncio.gather(*ten_site_tasks),
+            )
+            logger.info(f'Закончил асинхронный проход по сайтам')
+            # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
+            
+            # second_site_info = []
+            # for inn in array_inn:
+            #     info_dict = second_site(inn)
+            #     second_site_info.append(info_dict)
+
+
+            # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
+            logger.info(f'Начал синхронный проход по сайтам')
+            third_site_info = third_site(inn_firm, number_answer) 
+
+            
+            # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
+            # fourth_site_info = []
+            # for inn in array_inn:
+            #     info_dict = fourth_site(inn)
+            #     fourth_site_info.append(info_dict)
+
+
+            # 5 --------
+            # five_site_info = []
+            # for inn in array_inn:
+            #     info_dict = {f'{inn}': five_site(inn)}
+            #     five_site_info.append(info_dict)
+            five_site_info = five_site(inn)
+
+
+            # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
+            # seven_site_info = []
+            # for inn in array_inn:
+            #     info_dict = seven_site(inn)
+            #     seven_site_info.append(info_dict)
+
+
+            # 9 -------- файл и данные есть (файл в докере)
+            nine_site_info = []
+            for inn in array_inn:
+                info_dict = nine_site(inn)
+                nine_site_info.append(info_dict)
+            
+            
+            # 10 -------- скрины и данные есть
+            ten_site_info = []
+            for fio in array_fio:
+                info_dict = ten_site(fio=fio, number_answer=number_answer)
+                ten_site_info.append(info_dict)
+
+            logger.info(f'Закончил синхронный проход по сайтам')
+            logger.info(f'Закончил проход по сайтам')
+
+        except Exception as e:
+            logger.error(f'Ошибка при прохождении сайтов: {e}')
+            time.sleep(5)
+            clear_result_folder()
+            return 'Запустите еще раз', e
+
+        logger.info(f'Начал формировать ворд')
+        document = Document()
+        document.add_heading(f'ИНН проверяемой фирмы: {inn_firm} - {first_site_info[0]}')
+        
+        document.add_paragraph('1) Обращение в ЕГРЮЛ:')
+        for i in range(len(array_fio)):
+            if i == 0:
+                document.add_paragraph(f'{array_fio[i]} - {array_inn[i+1]} - директор')
+            else:
+                document.add_paragraph(f'{array_fio[i]} - {array_inn[i+1]} - учредители')
+        
+        document.add_paragraph('2) Обращение в РНП:')
+        for info in second_site_info:
+            document.add_paragraph(f'{info}')
+
+        document.add_paragraph('4) Обращение в Федресурс:')
+        for info in fourth_site_info:
+            document.add_paragraph(f'{info}')
+
+        document.add_paragraph('7) Обращение по КОАП:')
+        for info in seven_site_info:
+            document.add_paragraph(f'{info}')
+
+        document.add_paragraph('9) Обращение в РИА:')
+        for info in nine_site_info:
+            document.add_paragraph(f'{info}')
+
+        document.add_paragraph('10) Обращение в РЭТ:')
+        for info in ten_site_info:
+            document.add_paragraph(f'{info}')
+
+        document.save(f'./result/{number_answer}_{inn_firm}.docx')
+        logger.info(f'Закончил формировать ворд')
+        logger.info(f'Закончил {number_answer} итерацию')
     
-    # 1 -------- файл качается в докер, надо шарить папку и раскоментить парс пдфа с сайта
-    try:
-        logger.info(f'Начал проход по сайтам')
-        start_time = time.time()
-        
-        first_site_info = first_site(inn = inn)
-
-        logger.info(f'Конец первого сайта, результаты: {first_site_info}')
-        
-        array_inn = [inn_firm]
-        array_fio = []
-        for info in first_site_info[1]:
-            array_inn.append(info['inn'])
-            array_fio.append(f'{info['surname']} {info['name']} {info['patronymic']}')
-
-        
-        second_site_tasks = [asyncio.to_thread(second_site, inn) for inn in array_inn]
-        fourth_site_tasks = [asyncio.to_thread(fourth_site, inn) for inn in array_inn]
-        seven_site_tasks = [asyncio.to_thread(seven_site, inn) for inn in array_inn]
-        # nine_site_tasks = [asyncio.to_thread(nine_site, inn) for inn in array_inn]
-        # ten_site_tasks = [asyncio.to_thread(ten_site, fio) for fio in array_fio]
-
-        logger.info(f'Начал асинхронный проход по сайтам')
-        (
-            second_site_info,
-            fourth_site_info,
-            seven_site_info,
-            # nine_site_info,
-            # ten_site_info,
-        ) = await asyncio.gather(
-            asyncio.gather(*second_site_tasks),
-            asyncio.gather(*fourth_site_tasks),
-            asyncio.gather(*seven_site_tasks),
-            # asyncio.gather(*nine_site_tasks),
-            # asyncio.gather(*ten_site_tasks),
-        )
-        logger.info(f'Закончил асинхронный проход по сайтам')
-        # 2 -------- данные есть и скриншот (скриншот как на 7 сайте, надо спросить норм или нет)
-        
-        # second_site_info = []
-        # for inn in array_inn:
-        #     info_dict = second_site(inn)
-        #     second_site_info.append(info_dict)
-
-
-        # 3 -------- скриншот есть (единственное спросить хватит только инн фирмы и нужны ли данные в отчет)
-        logger.info(f'Начал синхронный проход по сайтам')
-        third_site_info = third_site(inn_firm) 
-
-        
-        # 4 -------- данные и скриншоты есть (по скриншотам надо вопрос задать, что там еще должно быть, может перейти во внутрь карточки)
-        # fourth_site_info = []
-        # for inn in array_inn:
-        #     info_dict = fourth_site(inn)
-        #     fourth_site_info.append(info_dict)
-
-
-        # 5 --------
-        # five_site_info = []
-        # for inn in array_inn:
-        #     info_dict = {f'{inn}': five_site(inn)}
-        #     five_site_info.append(info_dict)
-        five_site_info = five_site(inn)
-
-
-        # 7 -------- данные и скриншот есть (скриншот надо спросить пойдет или нет)
-        # seven_site_info = []
-        # for inn in array_inn:
-        #     info_dict = seven_site(inn)
-        #     seven_site_info.append(info_dict)
-
-
-        # 9 -------- файл и данные есть (файл в докере)
-        nine_site_info = []
-        for inn in array_inn:
-            info_dict = nine_site(inn)
-            nine_site_info.append(info_dict)
-        
-        
-        # 10 -------- скрины и данные есть
-        ten_site_info = []
-        for fio in array_fio:
-            info_dict = ten_site(fio=fio)
-            ten_site_info.append(info_dict)
-
-        logger.info(f'Закончил синхронный проход по сайтам')
-        logger.info(f'Закончил проход по сайтам')
-
-    except Exception as e:
-        logger.error(f'Ошибка при прохождении сайтов: {e}')
-        time.sleep(5)
-        clear_result_folder()
-        return 'Запустите еще раз', e
-
-    logger.info(f'Начал формировать ворд')
-    document = Document()
-    document.add_heading(f'ИНН проверяемой фирмы: {inn_firm} - {first_site_info[0]}')
-    
-    document.add_paragraph('1) Обращение в ЕГРЮЛ:')
-    for i in range(len(array_fio)):
-        if i == 0:
-            document.add_paragraph(f'{array_fio[i]} - {array_inn[i]} - директор')
-        else:
-            document.add_paragraph(f'{array_fio[i]} - {array_inn[i]} - учредители')
-    
-    document.add_paragraph('2) Обращение в РНП:')
-    for info in second_site_info:
-        document.add_paragraph(f'{info}')
-
-    document.add_paragraph('4) Обращение в Федресурс:')
-    for info in fourth_site_info:
-        document.add_paragraph(f'{info}')
-
-    document.add_paragraph('7) Обращение по КОАП:')
-    for info in seven_site_info:
-        document.add_paragraph(f'{info}')
-
-    document.add_paragraph('9) Обращение в РИА:')
-    for info in nine_site_info:
-        document.add_paragraph(f'{info}')
-
-    document.add_paragraph('10) Обращение в РЭТ:')
-    for info in ten_site_info:
-        document.add_paragraph(f'{info}')
-
-    document.save(f'./result/{inn_firm}.docx')
-    logger.info(f'Закончил формировать ворд')
+    logger.info(f'Закончил прохождение цикла')
 
     try:
         now_time = str(datetime.datetime.now().strftime("%Y%m%d%H%M"))
@@ -184,7 +195,7 @@ async def main(inn: str):
         
 
 
-random_user_agent = random.choice(USER_AGENTS)
+# random_user_agent = random.choice(USER_AGENTS)
 
 headers = {
     'User-Agent': random.choice(USER_AGENTS)
@@ -193,7 +204,7 @@ headers = {
 download_dir = "./result" 
 
 options = webdriver.ChromeOptions()
-options.add_argument(f"user-agent={random_user_agent}")
+# options.add_argument(f"user-agent={random_user_agent}")
 options.add_argument("--disable-notifications")  # Отключить уведомления
 options.add_argument("--disable-popup-blocking")  # Отключить блокировку всплывающих окон
 
@@ -205,16 +216,17 @@ options.add_experimental_option("prefs", {
 })
 
 
-def first_site(inn: str):
+def first_site(inn: str, number_answer: int):
     try:
         logger.info('Начало первого сайта')
-
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get("https://egrul.nalog.ru/index.html")
-        
+        time.sleep(5)
         input_inn = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//input[@id='query']"))
         )
@@ -237,7 +249,7 @@ def first_site(inn: str):
         )
         
         button_for_download_pdf.click()
-        time.sleep(20)
+        time.sleep(25)
         pdf_file = glob.glob("./result/ul-*.pdf")
         
         with pdfplumber.open(f'{pdf_file[0]}') as pdf:
@@ -254,12 +266,12 @@ def first_site(inn: str):
         all_partition_result = []
         
         for match in all_partition_matches:
-            surname, name, patronymic, inn = match
+            surname, name, patronymic, inn_lica = match
             result_dict = {
                 'surname': surname,
                 'name': name,
                 'patronymic': patronymic,
-                'inn': inn,
+                'inn': inn_lica,
             }
             all_partition_result.append(result_dict)
         
@@ -269,11 +281,16 @@ def first_site(inn: str):
     except Exception as e:
         logger.error(f'Ошибка в первом сайте: {e}')
     finally:
+        # переменовать пдф
+        if os.path.isfile(pdf_file[0]) or os.path.islink(pdf_file[0]):
+            new_pdf_file = pdf_file[0].replace(f'{pdf_file[0]}', f'./result/{number_answer}.pdf')
+            os.rename(pdf_file[0], new_pdf_file)
+
         driver.quit()
         
 
 
-def second_site(inn: str):
+def second_site(inn: str, number_answer: int):
     try:
         logger.info('Начало второго сайта')
     
@@ -285,6 +302,8 @@ def second_site(inn: str):
         result_info = soup.find(class_='search-registry-entrys-block')
 
         ##############################
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options
@@ -292,7 +311,7 @@ def second_site(inn: str):
         driver.get(f"https://zakupki.gov.ru/epz/dishonestsupplier/search/results.html?searchString={inn}&morphology=on&sortBy=UPDATE_DATE&pageNumber=1&sortDirection=false&recordsPerPage=_10&showLotsInfoHidden=false&fz94=on&fz223=on&ppRf615=one")
         
         time.sleep(5)
-        driver.save_screenshot(f'./result/screenshot/second_site/{inn}.png')
+        driver.save_screenshot(f'./result/screenshot/second_site/{number_answer}_{inn}.png')
         #############################
         
         logger.info('Конец второго сайта')
@@ -306,10 +325,12 @@ def second_site(inn: str):
         driver.quit()
 
 
-def third_site(inn: str):
+def third_site(inn: str, number_answer: int):
     try:
         logger.info('Начало третьего сайта')
 
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
@@ -324,7 +345,7 @@ def third_site(inn: str):
         input_inn.send_keys(Keys.RETURN)
         
         time.sleep(5)
-        driver.save_screenshot(f'./result/screenshot/third_site/1_{inn}.png')
+        driver.save_screenshot(f'./result/screenshot/third_site/{number_answer}_{inn}(1).png')
 
         name_organization = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'pb-card__title')]"))
@@ -334,12 +355,12 @@ def third_site(inn: str):
         time.sleep(5)
         result_info = driver.find_element(By.XPATH, "//span[contains(text(), 'Сведения о лице, имеющем право без доверенности действовать от имени юридического лица')]")
         ActionChains(driver).scroll_to_element(result_info).perform()
-        driver.save_screenshot(f'./result/screenshot/third_site/2_{inn}.png')
+        driver.save_screenshot(f'./result/screenshot/third_site/{number_answer}_{inn}(2).png')
         
         time.sleep(2)
         result_info = driver.find_element(By.XPATH, "//span[contains(text(), 'Сведения о непредставлении налоговой отчетности более года')]")
         ActionChains(driver).scroll_to_element(result_info).perform()
-        driver.save_screenshot(f'./result/screenshot/third_site/3_{inn}.png')
+        driver.save_screenshot(f'./result/screenshot/third_site/{number_answer}_{inn}(3).png')
 
         logger.info('Конец третьего сайта')
 
@@ -350,10 +371,12 @@ def third_site(inn: str):
         
 
 
-def fourth_site(inn: str):
+def fourth_site(inn: str, number_answer: int):
     try:
         logger.info('Начало четвертого сайта')
 
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
@@ -366,7 +389,7 @@ def fourth_site(inn: str):
             EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'container full-height')]"))
         )
 
-        driver.save_screenshot(f'./result/screenshot/fourth_site/{inn}.png')
+        driver.save_screenshot(f'./result/screenshot/fourth_site/{number_answer}_{inn}.png')
         
         logger.info('Конец четвертого сайта')
         if len(result.get_attribute('outerHTML')) > 7000:
@@ -385,6 +408,8 @@ def five_site(inn: str):
         # inn = "5054004240"
         # proxy = "http://V84kEe:XhAdiJu5Ej@45.15.72.224:5500"
         # options.add_argument(f"--proxy-server={proxy}")
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
@@ -453,7 +478,7 @@ def five_site(inn: str):
         driver.quit()
 
 
-def seven_site(inn: str):
+def seven_site(inn: str, number_answer: int):
     try:
         logger.info('Начало седьмого сайта')
 
@@ -466,13 +491,15 @@ def seven_site(inn: str):
         
         print(len(result_info.text))
         ##############################
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
         )
         driver.get(f"https://zakupki.gov.ru/epz/main/public/document/search.html?searchString={inn}&sectionId=2369&strictEqual=false")
         time.sleep(5)
-        driver.save_screenshot(f'./result/screenshot/seven_site/{inn}.png')
+        driver.save_screenshot(f'./result/screenshot/seven_site/{number_answer}_{inn}.png')
         #############################
         
         logger.info('Конец седьмого сайта')
@@ -495,6 +522,9 @@ def nine_site(inn: str): # Впринципе готово (проблема п�
         try:
             logger.info('Качаем эксель девятого сайта')
             url = 'https://minjust.gov.ru/ru/pages/reestr-inostryannykh-agentov/'
+            
+            random_user_agent = random.choice(USER_AGENTS)
+            options.add_argument(f"user-agent={random_user_agent}")
             driver = webdriver.Remote(
                 command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
                 options=options  
@@ -544,10 +574,12 @@ def nine_site(inn: str): # Впринципе готово (проблема п�
 
 
 
-def ten_site(fio: str):
+def ten_site(fio: str, number_answer: int):
     try:
         logger.info('Начало десятого сайта')
 
+        random_user_agent = random.choice(USER_AGENTS)
+        options.add_argument(f"user-agent={random_user_agent}")
         driver = webdriver.Remote(
             command_executor=f"http://{SELENIUM_HOST}:{SELENIUM_PORT}/wd/hub",
             options=options  
@@ -576,7 +608,7 @@ def ten_site(fio: str):
         result_info = WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.XPATH, "//tbody"))
         )
-        driver.save_screenshot(f'./result/screenshot/ten_site/{fio}.png')
+        driver.save_screenshot(f'./result/screenshot/ten_site/{number_answer}_{fio}.png')
     
         logger.info('Конец десятого сайта')
         if len(result_info.get_attribute('outerHTML')) > 120:
